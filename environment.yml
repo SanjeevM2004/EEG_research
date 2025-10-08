@@ -1,13 +1,23 @@
 name: eeg_env
 channels:
+  - pytorch
+  - nvidia
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.12
   - mne
   - numpy
   - scipy
-  - pip
   - matplotlib
   - pandas
   - pyriemann
+  - antropy
+  - tsfel
+  - mne-features
+  - tqdm
+  - pip
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1   # or 12.9 if your driver >= 560.xx

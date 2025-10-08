@@ -27,13 +27,16 @@ def bandpass_filter(raw: mne.io.BaseRaw, l_freq: float = 1.0, h_freq: float = 80
         x_filtered(t) = H{x(t)} 
     where H is a filter that keeps only [l_freq, h_freq].
     """
+
+    nyquist = raw.info["sfreq"] / 2.0
+    if h_freq >= nyquist:
+        h_freq = nyquist - 1.0  # leave a safety margin
     raw_filtered = raw.copy().filter(l_freq=l_freq, h_freq=h_freq, verbose=False)
     return raw_filtered
 
-
-def notch_filter(raw: mne.io.BaseRaw, freq: float = 50.0) -> mne.io.BaseRaw:
+def notch_filter(raw: mne.io.BaseRaw, freq: float = 60.0) -> mne.io.BaseRaw:
     """
-    Apply notch filter to remove line noise (e.g., 50 Hz in India/Europe).
+    Apply notch filter to remove line noise (e.g., 60 Hz in India/Europe).
     
     Parameters
     ----------
@@ -50,7 +53,7 @@ def notch_filter(raw: mne.io.BaseRaw, freq: float = 50.0) -> mne.io.BaseRaw:
     ------------------------
     A notch filter removes a very narrow band around freq.
     Useful to suppress line noise:
-        H(f) ≈ 0 at f = 50 Hz
+        H(f) ≈ 0 at f = 60 Hz
         H(f) ≈ 1 elsewhere
     """
     raw_notched = raw.copy().notch_filter(freqs=[freq], verbose=False)

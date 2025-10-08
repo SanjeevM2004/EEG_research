@@ -1,5 +1,7 @@
 from glob import glob 
 import mne
+from mne.preprocessing import ICA
+import pandas as pd
 
 # Define the file path to the EDF file
 file_paths = glob("EEG_data/Physionet/*/*.edf")

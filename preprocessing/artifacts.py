@@ -39,26 +39,25 @@ def run_ica(
         random_state=random_state,
         max_iter="auto"
     )
-    ica.fit(raw)
-
-    # No automatic EOG/ECG removal
-    raw_clean = raw.copy()
-    ica.apply(raw_clean)
+    with mne.utils.use_log_level("ERROR"):
+        ica.fit(raw)
+        raw_clean = raw.copy()
+        ica.apply(raw_clean)
     return raw_clean
 
-def reject_bad_epochs(epochs: mne.Epochs, threshold_uV: float = 300.0, drop: bool = True):
-    data = epochs.get_data()
+def reject_bad_epochs(epochs: mne.Epochs, threshold_uV: float = 500.0, drop: bool = True):
+    if len(epochs) == 0:
+        # Nothing to do
+        return epochs.copy() if drop else (epochs, [])
+
+    data = epochs.get_data()  # (n_epochs, n_channels, n_times)
     max_per_epoch = data.max(axis=(1, 2))
-    print("Max amplitude per epoch:", max_per_epoch[:10])
 
     threshold_V = threshold_uV * 1e-6
     bad_idx = [i for i, val in enumerate(max_per_epoch) if val > threshold_V]
 
-    print(f"Threshold = {threshold_uV} µV ({threshold_V} V). Bad epochs: {bad_idx}")
-
     if drop:
         epochs_clean = epochs.copy().drop(bad_idx)
-        print(f"Epochs before: {len(epochs)}, after rejection: {len(epochs_clean)}")
         return epochs_clean
     else:
         return epochs, bad_idx

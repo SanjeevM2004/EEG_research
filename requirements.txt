@@ -1,0 +1,21 @@
+# Core scientific stack
+numpy
+scipy
+matplotlib
+pandas
+
+# EEG & signal processing
+mne
+pyriemann
+antropy
+tqdm
+mne-features
+tsfel
+
+# PyTorch + CUDA 12.1 (use NVIDIA’s pip wheels)
+torch
+torchvision
+torchaudio
+
+# If you want CUDA 12.1 support explicitly, install with:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121

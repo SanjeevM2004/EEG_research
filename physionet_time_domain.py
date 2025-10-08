@@ -9,7 +9,7 @@ file_path = "EEG_data/Physionet/S001/S001R14.edf"
 # Load the raw EEG data and get events
 raw = mne.io.read_raw_edf(file_path, preload=True)
 events, event_id = mne.events_from_annotations(raw)
-tmin, tmax = -2, 4
+tmin, tmax = -0.5, 4
 
 # Create epochs from the raw data based on events
 epochs = mne.Epochs(raw, events, event_id, tmin, tmax, baseline=(None, 0), preload=True)
@@ -31,7 +31,6 @@ for label in unique_labels:
 
         # Reshape the data to a 2D format (n_epochs, n_channels * n_times)
         n_epochs = data.shape[0]
-        print(data.shape)
         flattened_data = data.reshape(n_epochs, -1)
 
         # Create a DataFrame from the flattened data
