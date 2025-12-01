@@ -102,10 +102,12 @@ The repository is organized into modular components. Click on the folder names f
 
 ### Usage Example
 
-To train the **NeuroGraphNet (GADCN)** model on the BCI IV 2a dataset:
+### Usage Example
+
+To train the **RiFUNet** classifier on the BCI IV 2a dataset:
 
 ```bash
-python train/riemann_train.py --dataset bci42a --model gadcn --epochs 100
+python train/rifuce_train.py
 ```
 
 ---
