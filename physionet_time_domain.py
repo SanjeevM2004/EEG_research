@@ -8,6 +8,7 @@ file_path = "EEG_data/Physionet/S001/S001R14.edf"
 
 # Load the raw EEG data and get events
 raw = mne.io.read_raw_edf(file_path, preload=True)
+print(raw)
 events, event_id = mne.events_from_annotations(raw)
 tmin, tmax = -0.5, 4
 

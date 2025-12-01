@@ -10,7 +10,7 @@ from collections import Counter
 from adjacency_edges.entropy_mi import mutual_info_adjacency_psd
 from adjacency_edges.riemann import riemann_log_euclidean
 from adjacency_edges.spearman import spearman_adjacency_psd
-from models.eeg import EEGGraphNet
+from models.eeg_feat import EEGGraphNet
 from data_construction.EEGFeatureDataset import EEGFeatureDataset
 
 # -------------------------

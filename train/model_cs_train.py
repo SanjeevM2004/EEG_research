@@ -7,7 +7,7 @@ from tqdm import tqdm
 from collections import Counter
 import os
 from torch.amp import autocast, GradScaler
-from models.eeg import EEGGraphNet
+from models.eeg_feat import EEGGraphNet
 from data_construction.EEGFeatureDataset import EEGFeatureDataset
 
 

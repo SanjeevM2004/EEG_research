@@ -11,7 +11,7 @@ from moabb.paradigms import MotorImagery
 from moabb.evaluations import WithinSessionEvaluation
 
 from data_construction.EEGFeatureDataset import EEGFeatureDataset
-from models.eeg import EEGGraphNet
+from models.eeg_feat import EEGGraphNet
 
 
 # --------------------------
