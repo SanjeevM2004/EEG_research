@@ -75,7 +75,10 @@ The repository is organized into modular components. Click on the folder names f
 | **[`train/`](train/README.md)** | **Training Scripts**. Pipelines for training GADCN and baseline models. |
 | **[`eval/`](eval/README.md)** | **Evaluation**. Metrics, cross-validation, and performance analysis. |
 | **[`results/`](results/README.md)** | **Figures & Reports**. Generated confusion matrices, training logs, and visualizations. |
-| **[`references/`](references/)** | **Papers & Diagrams**. The original paper and architecture diagrams. |
+| **[`adjacency_edges/`](adjacency_edges/README.md)** | **Graph Construction**. Utilities for defining graph edges (Entropy, Riemann, Spearman). |
+| **[`references/`](references/README.md)** | **Papers & Diagrams**. The original paper and architecture diagrams. |
+| **`EEG_data/`** | **Data Storage**. Directory for raw and processed EEG datasets (Git-ignored). |
+| **`models_saved/`** | **Checkpoints**. Directory for saving trained model weights (Git-ignored). |
 
 ---
 
@@ -99,8 +102,6 @@ The repository is organized into modular components. Click on the folder names f
     ```bash
     pip install -r requirements.txt
     ```
-
-### Usage Example
 
 ### Usage Example
 
