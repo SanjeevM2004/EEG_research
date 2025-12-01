@@ -16,29 +16,33 @@ The research focuses on decoding motor imagery and other EEG paradigms by treati
 This repository implements advanced signal processing and machine learning techniques rooted in differential geometry.
 
 ### 1. Riemannian Geometry of EEG
-EEG signals are often represented by their covariance matrices. A covariance matrix $C \in \mathbb{R}^{C \times C}$ is **Symmetric Positive Definite (SPD)**. The space of SPD matrices, $\mathcal{P}_C$, forms a Riemannian manifold, not a Euclidean vector space.
+EEG signals are often represented by their covariance matrices. A covariance matrix **C** (size *C x C*) is **Symmetric Positive Definite (SPD)**. The space of SPD matrices forms a Riemannian manifold, not a Euclidean vector space.
 
-The **Riemannian distance** between two SPD matrices $C_1, C_2$ is given by the affine-invariant metric:
-$$ \delta_R(C_1, C_2) = \|\log(C_1^{-1/2} C_2 C_1^{-1/2})\|_F = \left( \sum_{i=1}^C \ln^2(\lambda_i) \right)^{1/2} $$
-where $\lambda_i$ are the eigenvalues of $C_1^{-1} C_2$.
+The **Riemannian distance** between two SPD matrices *C1* and *C2* is given by the affine-invariant metric:
+
+> δ_R(C1, C2) = || log(C1^(-1/2) * C2 * C1^(-1/2)) ||_F = ( Σ ln²(λ_i) )^(1/2)
+
+where *λ_i* are the eigenvalues of *C1^(-1) * C2*.
 
 ### 2. Tangent Space Mapping
-To apply standard Euclidean machine learning algorithms (like SVMs or Logistic Regression), we project the SPD matrices onto the **Tangent Space** at a reference point $C_{ref}$ (usually the geometric mean of the dataset).
+To apply standard Euclidean machine learning algorithms (like SVMs or Logistic Regression), we project the SPD matrices onto the **Tangent Space** at a reference point *C_ref* (usually the geometric mean of the dataset).
 
 The mapping is defined by the **Log-Euclidean** map:
-$$ S_i = \text{Log}_{C_{ref}}(C_i) = C_{ref}^{1/2} \log(C_{ref}^{-1/2} C_i C_{ref}^{-1/2}) C_{ref}^{1/2} $$
-The resulting tangent vectors $S_i$ lie in a Euclidean space and can be vectorized.
+
+> S_i = Log_Cref(C_i) = C_ref^(1/2) * log(C_ref^(-1/2) * C_i * C_ref^(-1/2)) * C_ref^(1/2)
+
+The resulting tangent vectors *S_i* lie in a Euclidean space and can be vectorized.
 
 ### 3. Graph Attention Dual Convolution Network (GADCN)
 The core model, **NeuroGraphNet** (implemented in `models/neuronet.py`), integrates temporal and spatial learning:
 
-1.  **Whitening**: Signals are whitened using the subject-specific mean covariance $C_{ref}$ to align distributions:
-    $$ X_{white} = C_{ref}^{-1/2} X $$
-2.  **Graph Construction**: A graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ is constructed where nodes $\mathcal{V}$ represent EEG channels. The adjacency matrix $A$ is derived from the Riemannian distance or correlation between channels.
+1.  **Whitening**: Signals are whitened using the subject-specific mean covariance *C_ref* to align distributions:
+    > X_white = C_ref^(-1/2) * X
+2.  **Graph Construction**: A graph *G = (V, E)* is constructed where nodes *V* represent EEG channels. The adjacency matrix *A* is derived from the Riemannian distance or correlation between channels.
 3.  **Dual Convolution**:
-    *   **Temporal Convolution**: LSTMs or 1D-CNNs capture temporal dynamics $H^{(t)} = \text{LSTM}(X_{white})$.
+    *   **Temporal Convolution**: LSTMs or 1D-CNNs capture temporal dynamics: *H^(t) = LSTM(X_white)*.
     *   **Spatial Graph Convolution**: GCNs aggregate information from neighboring channels:
-        $$ H^{(l+1)} = \sigma(\tilde{D}^{-1/2} \tilde{A} \tilde{D}^{-1/2} H^{(l)} W^{(l)}) $$
+        > H^(l+1) = σ(D̃^(-1/2) * Ã * D̃^(-1/2) * H^(l) * W^(l))
 4.  **Domain Adaptation**: Domain Adversarial Neural Networks (DANN) are used to learn subject-invariant features by minimizing a domain classification loss.
 
 ---
