@@ -11,6 +11,16 @@ The research focuses on decoding motor imagery and other EEG paradigms by treati
 
 ---
 
+## 🏗️ System Architecture
+
+### Preprocessing Pipeline
+![Preprocessing](references/Preprocessing_modules.png)
+
+### Classifier Architecture
+![Classifier](references/Classifier_modules.png)
+
+---
+
 ## 🧮 Mathematical Foundations
 
 This repository implements advanced signal processing and machine learning techniques rooted in differential geometry.
@@ -67,8 +77,8 @@ The repository is organized into modular components. Click on the folder names f
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/yourusername/gadcn-eeg.git
-    cd gadcn-eeg
+    git clone https://github.com/SanjeevM2004/EEG_research.git
+    cd EEG_research
     ```
 
 2.  **Install dependencies**:
@@ -89,16 +99,6 @@ To evaluate a trained model:
 ```bash
 python eval/eval.py --model_path models_saved/best_model.pt
 ```
-
----
-
-## 🏗️ System Architecture
-
-### Preprocessing Pipeline
-![Preprocessing](references/Preprocessing_modules.png)
-
-### Classifier Architecture
-![Classifier](references/Classifier_modules.png)
 
 ---
 
