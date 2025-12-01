@@ -7,7 +7,7 @@ This directory contains the deep learning architectures and graph neural network
 | File | Description |
 | :--- | :--- |
 | **[`neuronet.py`](neuronet.py)** | **NeuroGraphNet (GADCN)**. The main model architecture. Integrates LSTM (temporal), GCN (spatial), and Domain Adversarial Learning. |
-| **[`gcn.py`](gcn.py)** | **Graph Convolutional Network**. Standard GCN layer implementation $H' = \sigma(\tilde{D}^{-1/2} \tilde{A} \tilde{D}^{-1/2} H W)$. |
+| **[`gcn.py`](gcn.py)** | **Graph Convolutional Network**. Standard GCN layer implementation: **H' = σ(D̃^(-1/2) * Ã * D̃^(-1/2) * H * W)**. |
 | **[`rgcn.py`](rgcn.py)** | **Relational / Shallow GCN**. Implements shallow graph attention mechanisms and transformer blocks for EEG graphs. |
 | **[`dann.py`](dann.py)** | **Domain Adversarial Neural Network**. Gradient Reversal Layer (GRL) and domain discriminator for subject-invariant learning. |
 | **[`mae.py`](mae.py)** | **Masked Autoencoder**. Self-supervised learning component for pre-training on EEG data. |

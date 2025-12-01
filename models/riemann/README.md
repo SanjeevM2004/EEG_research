@@ -6,21 +6,25 @@ This folder (`models/riemann`) contains the core research implementations based 
 
 ### 1. Minimum Distance to Mean (MDM)
 **File**: [`mdm.py`](mdm.py)
-A classifier that assigns a sample covariance matrix $C$ to the class $k$ whose mean covariance $\bar{C}_k$ is closest in terms of Riemannian distance:
-$$ \hat{k} = \arg\min_k \delta_R(C, \bar{C}_k) $$
-where $\delta_R$ is the affine-invariant Riemannian metric.
+A classifier that assigns a sample covariance matrix *C* to the class *k* whose mean covariance *C̄_k* is closest in terms of Riemannian distance:
+
+> k_hat = argmin_k δ_R(C, C̄_k)
+
+where *δ_R* is the affine-invariant Riemannian metric.
 
 ### 2. Tangent Space Logistic Regression (TSLR)
 **File**: [`tslr.py`](tslr.py)
-Projects SPD matrices into the tangent space at the geometric mean $C_{ref}$. The tangent vectors are then classified using standard Logistic Regression.
-$$ S_i = \text{Log}_{C_{ref}}(C_i) $$
+Projects SPD matrices into the tangent space at the geometric mean *C_ref*. The tangent vectors are then classified using standard Logistic Regression.
+
+> S_i = Log_Cref(C_i)
+
 This allows the use of Euclidean linear classifiers on curved manifolds.
 
 ### 3. Covariance CNN (CovCNN)
 **File**: [`covcnn.py`](covcnn.py)
 A Deep Learning approach that treats the covariance matrix as an image. It applies 2D convolutions directly to the SPD matrix structure.
-*   **Input**: $C \in \mathbb{R}^{C \times C}$
-*   **Layers**: Conv2D $\to$ ReLU $\to$ AdaptiveAvgPool $\to$ Linear.
+*   **Input**: *C* (size *C x C*)
+*   **Layers**: Conv2D → ReLU → AdaptiveAvgPool → Linear.
 
 ### 4. Domain Covariance Re-Alignment (DCR)
 **File**: [`dcra.py`](dcra.py)
