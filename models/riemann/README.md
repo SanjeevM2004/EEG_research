@@ -18,9 +18,21 @@ A Deep Learning approach that treats the covariance matrix as an image. It appli
 *   **Input**: *C* (size *C x C*)
 *   **Layers**: Conv2D → ReLU → AdaptiveAvgPool → Linear.
 
-### 4. Domain Covariance Re-Alignment (DCR)
-**File**: [`dcra.py`](dcra.py)
-A transfer learning technique that aligns the covariance distributions of different subjects (domains) to a common reference, reducing inter-subject variability.
+### 4. RiFU (Riemannian Fusion)
+**File**: [`rifu.py`](rifu.py)
+A **Riemannian U-Net** for manifold alignment.
+*   **Architecture**: Encoder-Decoder structure using **SPDLinear** layers (congruence transforms $W^T C W$).
+*   **Function**: Aligns subject-specific covariance manifolds to a common reference space.
+*   **Losses**: Trained with a combination of Fisher loss (class separation), Subject Fisher loss (subject alignment), and Riemannian reconstruction loss.
+
+### 5. DCR (Domain Covariance Re-Alignment)
+**File**: [`dcrbifa.py`](dcrbifa.py)
+A **Dual-Fisher** optimization module (`DCRPreAlignerDualFast`).
+*   **Objective**: Iteratively learns a rotation matrix $R$ in the Log-Euclidean space.
+*   **Optimization**:
+    *   **Maximize Class Fisher**: Increases separation between different motor imagery classes.
+    *   **Minimize Subject Fisher**: Decreases distance between different subjects' distributions.
+*   **Result**: A subject-invariant representation that boosts classifier performance in cross-subject settings.
 
 ## File List
 

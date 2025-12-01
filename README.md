@@ -35,15 +35,29 @@ To apply standard Euclidean machine learning algorithms (like SVMs or Logistic R
 
 The mapping is defined by the **Log-Euclidean** map, which transforms the curved manifold structure into a flat Euclidean vector space that can be vectorized.
 
-### 3. Graph Attention Dual Convolution Network (GADCN)
-The core model, **NeuroGraphNet** (implemented in `models/neuronet.py`), integrates temporal and spatial learning:
+### 3. Core Research Components
+This repository implements the novel contributions of the paper, focusing on geometry-aware manifold learning:
 
-1.  **Whitening**: Signals are whitened using the subject-specific mean covariance to align distributions.
-2.  **Graph Construction**: A graph is constructed where nodes represent EEG channels. The adjacency matrix is derived from the Riemannian distance or correlation between channels.
-3.  **Dual Convolution**:
-    *   **Temporal Convolution**: LSTMs or 1D-CNNs capture temporal dynamics.
-    *   **Spatial Graph Convolution**: GCNs aggregate information from neighboring channels using the graph structure.
-4.  **Domain Adaptation**: Domain Adversarial Neural Networks (DANN) are used to learn subject-invariant features by minimizing a domain classification loss.
+#### **1. RiFU (Riemannian Fusion Pre-Aligner)**
+**File**: [`models/riemann/rifu.py`](models/riemann/rifu.py)
+A **Riemannian U-Net** that performs non-linear alignment of covariance matrices in the SPD space. It uses a congruence-based encoder-decoder architecture to align subject-specific manifolds to a common reference space, enhancing cross-subject generalization.
+
+#### **2. DCR (Domain Covariance Re-Alignment)**
+**File**: [`models/riemann/dcrbifa.py`](models/riemann/dcrbifa.py)
+A **Dual-Fisher** optimization module that iteratively rotates covariance matrices in the log-Euclidean space. It simultaneously:
+*   Maximizes **Class Fisher** information (separation between classes).
+*   Minimizes **Subject Fisher** information (alignment between subjects).
+
+#### **3. SPD-DCNet (Deep Congruence Network)**
+**File**: [`train/spdnet.py`](train/spdnet.py)
+A deep neural network architecture designed specifically for SPD matrices. It consists of **SPDLinear layers** (congruence transforms) followed by a Log-Euclidean mapping and a standard classifier, trained with a subject-alignment loss.
+
+#### **4. RiFUNet Classifier**
+**File**: [`train/rifuce_train.py`](train/rifuce_train.py)
+An end-to-end classification framework that integrates:
+*   **RiFuNet Backbone**: For manifold alignment.
+*   **Fisher Loss**: To enforce discriminative feature learning.
+*   **DANN (Domain Adversarial Neural Network)**: To learn subject-invariant features via a Gradient Reversal Layer (GRL).
 
 ---
 
@@ -92,12 +106,6 @@ To train the **NeuroGraphNet (GADCN)** model on the BCI IV 2a dataset:
 
 ```bash
 python train/riemann_train.py --dataset bci42a --model gadcn --epochs 100
-```
-
-To evaluate a trained model:
-
-```bash
-python eval/eval.py --model_path models_saved/best_model.pt
 ```
 
 ---
