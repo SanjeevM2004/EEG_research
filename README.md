@@ -107,10 +107,13 @@ python eval/eval.py --model_path models_saved/best_model.pt
 If you use this code in your research, please cite our paper:
 
 ```bibtex
-@inproceedings{gadcn2026,
-  title={GADCN: Graph Attention Dual Convolution Networks},
-  author={Sanjeev M, et al.},
-  booktitle={International Conference on Machine Learning (ICML)},
-  year={2026}
+@misc{gadcn2026,
+      title={Geometry-Aware Deep Congruence Networks for Manifold Learning in Cross-Subject Motor Imagery}, 
+      author={Sanjeev Manivannan, Chandrashekar Lakshminarayan},
+      year={2026},
+      eprint={2511.18940},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2511.18940}, 
 }
 ```
