@@ -1,10 +1,10 @@
-# GADCN: Graph Attention Dual Convolution Networks for EEG Analysis
+# GADCN: Geometry aware Deep Congruence Networks
 
 This repository contains the official implementation of the research paper **"GADCN: Graph Attention Dual Convolution Networks"** (ICML 2026). It provides a comprehensive framework for EEG signal analysis, leveraging **Riemannian Geometry** and **Geometric Deep Learning**.
 
 ## 📄 Research Paper
 
-**Title**: GADCN: Graph Attention Dual Convolution Networks
+**Title**: GADCN: Geometry aware Deep Congruence Networks
 **File**: [references/arxiv_gadcn_icml_2026.pdf](references/arxiv_gadcn_icml_2026.pdf)
 
 The research focuses on decoding motor imagery and other EEG paradigms by treating EEG signals as data on a Riemannian manifold of Symmetric Positive Definite (SPD) matrices.
