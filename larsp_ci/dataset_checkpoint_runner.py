@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Build a validated image-only DLPFC dataset checkpoint, then train from it.
+"""Build a validated image-only DLPFC checkpoint and train only from it.
 
-The checkpoint is the only input consumed by the training stage. It contains
-H&E patches, spot/barcode IDs, full-resolution and image coordinates, labels,
-section IDs, donor IDs, images used for plotting, and provenance checksums.
-No expression matrix is read or materialised.
+Only H&E pixels, spot coordinates, spot identifiers, donor/section metadata and
+manual layer labels are stored. Gene-expression matrices are never accessed.
 """
 from __future__ import annotations
 
@@ -13,10 +11,12 @@ import hashlib
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
+import pandas as pd
 import requests
 import torch
 from PIL import Image
@@ -47,19 +47,18 @@ class DLPFCCVDatasetBuilder:
         if b"\x00" in raw or raw.count(b"\n") < 100:
             return False
         try:
-            series = core.read_truth(path)
+            s = core.read_truth(path)
         except Exception:
             return False
-        return len(series) >= 100
+        return len(s) >= 100 and sum(core.canonical_label(v) >= 0 for v in s.to_numpy()) >= 100
 
-    def _download_atomic(self, url: str, target: Path, expected_md5: str | None,
-                         min_bytes: int) -> None:
+    def _download_atomic(self, url: str, target: Path, expected_md5: str | None, min_bytes: int) -> None:
         def valid(path: Path) -> bool:
-            if not path.exists() or path.stat().st_size < min_bytes:
-                return False
-            if expected_md5 and self._md5(path).lower() != expected_md5.lower():
-                return False
-            return True
+            return (
+                path.exists()
+                and path.stat().st_size >= min_bytes
+                and (not expected_md5 or self._md5(path).lower() == expected_md5.lower())
+            )
 
         if valid(target):
             return
@@ -70,11 +69,8 @@ class DLPFCCVDatasetBuilder:
             tmp.unlink(missing_ok=True)
             try:
                 with requests.get(
-                    url,
-                    stream=True,
-                    timeout=(30, 900),
-                    headers={"User-Agent": "LaRSP-CV-dataset-builder/2.0"},
-                    allow_redirects=True,
+                    url, stream=True, timeout=(30, 900), allow_redirects=True,
+                    headers={"User-Agent": "LaRSP-CV-dataset-builder/2.1"},
                 ) as response:
                     response.raise_for_status()
                     with tmp.open("wb") as f:
@@ -83,7 +79,8 @@ class DLPFCCVDatasetBuilder:
                                 f.write(chunk)
                 if not valid(tmp):
                     raise RuntimeError(
-                        f"validation failed size={tmp.stat().st_size if tmp.exists() else 0} "
+                        f"download validation failed for {target.name}: "
+                        f"size={tmp.stat().st_size if tmp.exists() else 0}, "
                         f"md5={self._md5(tmp) if tmp.exists() else 'missing'}"
                     )
                 tmp.replace(target)
@@ -92,35 +89,77 @@ class DLPFCCVDatasetBuilder:
                 tmp.unlink(missing_ok=True)
                 if attempt == 7:
                     raise
-                import time
                 time.sleep(min(60, 2 ** attempt))
+
+    def _recover_truth_from_h5ad(self, sid: str, h5ad_path: Path, truth_path: Path) -> str:
+        """Recover manual labels from spot-level h5ad metadata, never from expression."""
+        adata = core.ad.read_h5ad(h5ad_path, backed="r")
+        try:
+            obs = adata.obs.copy()
+            barcodes = adata.obs_names.astype(str)
+        finally:
+            try:
+                adata.file.close()
+            except Exception:
+                pass
+
+        preferred = [
+            "ground_truth", "layer_guess_reordered", "layer_guess", "spatialLIBD",
+            "manual_layer", "manual_annotation", "annotation", "layer", "label",
+        ]
+        candidates = []
+        for col in preferred + [str(c) for c in obs.columns if str(c) not in preferred]:
+            if col not in obs.columns:
+                continue
+            values = obs[col].astype(str).to_numpy()
+            recognised = int(sum(core.canonical_label(v) >= 0 for v in values))
+            candidates.append((recognised, col, values))
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        if not candidates or candidates[0][0] < 100:
+            scored = [(n, c) for n, c, _ in candidates[:20]]
+            raise ValueError(
+                f"{sid}: no usable manual layer column in h5ad obs; best candidates={scored}"
+            )
+
+        recognised, column, values = candidates[0]
+        frame = pd.DataFrame({0: barcodes, 1: values})
+        frame = frame[[core.canonical_label(v) >= 0 for v in frame[1].to_numpy()]]
+        truth_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = truth_path.with_suffix(truth_path.suffix + ".recovered")
+        frame.to_csv(tmp, sep="\t", header=False, index=False)
+        tmp.replace(truth_path)
+        if not self._truth_valid(truth_path):
+            raise ValueError(f"{sid}: recovered truth file did not validate")
+        print(f"[dataset] recovered {truth_path.name} from obs[{column!r}] ({recognised} labels)")
+        return f"h5ad_obs:{column}"
 
     def acquire_sources(self) -> Dict[str, str]:
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        response = requests.get(
-            f"https://zenodo.org/api/records/{core.ZENODO_RECORD}", timeout=120
-        )
+        response = requests.get(f"https://zenodo.org/api/records/{core.ZENODO_RECORD}", timeout=120)
         response.raise_for_status()
         entries = {item["key"]: item for item in response.json()["files"]}
         checksums: Dict[str, str] = {}
 
         for sid in core.SAMPLE_TO_DONOR:
-            for name in (f"{sid}_filtered_feature_bc_matrix.h5ad", f"{sid}_truth.txt"):
+            h5name = f"{sid}_filtered_feature_bc_matrix.h5ad"
+            truth_name = f"{sid}_truth.txt"
+            for name in (h5name, truth_name):
                 if name not in entries:
                     raise KeyError(f"Zenodo record missing required file: {name}")
                 checksum = str(entries[name].get("checksum", ""))
                 expected = checksum.split(":", 1)[1] if checksum.lower().startswith("md5:") else None
-                # Use the public file-content endpoint explicitly. The Zenodo
-                # `self` link is metadata and must never be treated as file bytes.
                 url = f"https://zenodo.org/records/{core.ZENODO_RECORD}/files/{name}?download=1"
-                target = self.data_dir / name
-                self._download_atomic(url, target, expected, 128)
-                if name.endswith("_truth.txt") and not self._truth_valid(target):
-                    target.unlink(missing_ok=True)
-                    self._download_atomic(url, target, expected, 128)
-                    if not self._truth_valid(target):
-                        raise ValueError(f"Truth validation failed after clean redownload: {name}")
-                checksums[name] = self._md5(target)
+                self._download_atomic(url, self.data_dir / name, expected, 128)
+
+            truth_path = self.data_dir / truth_name
+            provenance = "zenodo_truth"
+            if not self._truth_valid(truth_path):
+                provenance = self._recover_truth_from_h5ad(
+                    sid, self.data_dir / h5name, truth_path
+                )
+            checksums[h5name] = self._md5(self.data_dir / h5name)
+            checksums[truth_name] = self._md5(truth_path)
+            checksums[f"{truth_name}:source"] = provenance
 
             image_name = f"{sid}_{core.IMAGE_SUFFIX}"
             image_path = self.data_dir / image_name
@@ -150,10 +189,8 @@ class DLPFCCVDatasetBuilder:
                 raise ValueError(f"{section.sample_id}: coordinate shape mismatch")
             if section.patches.shape != (n, self.patch_size, self.patch_size, 3):
                 raise ValueError(f"{section.sample_id}: patch shape mismatch {section.patches.shape}")
-            if section.labels.shape != (n,):
-                raise ValueError(f"{section.sample_id}: label shape mismatch")
-            if not np.isin(section.labels, np.arange(-1, 7)).all():
-                raise ValueError(f"{section.sample_id}: invalid label IDs")
+            if section.labels.shape != (n,) or not np.isin(section.labels, np.arange(-1, 7)).all():
+                raise ValueError(f"{section.sample_id}: invalid label vector")
             if int((section.labels >= 0).sum()) < 100:
                 raise ValueError(f"{section.sample_id}: too few labelled spots")
             if not np.isfinite(section.coords_fullres).all() or not np.isfinite(section.coords_image).all():
@@ -169,7 +206,7 @@ class DLPFCCVDatasetBuilder:
         sections = core.load_sections(self.data_dir, self.patch_size, self.image_scale)
         self.validate_sections(sections)
         payload = {
-            "format": "larsp-dlpfc-cv-v2",
+            "format": "larsp-dlpfc-cv-v2.1",
             "labels": list(core.LABELS),
             "label_to_id": {name: i for i, name in enumerate(core.LABELS)},
             "patch_size": self.patch_size,
@@ -185,8 +222,6 @@ class DLPFCCVDatasetBuilder:
             torch.save(payload, tmp)
             loaded = torch.load(tmp, map_location="cpu", weights_only=False)
             self.validate_sections(loaded["sections"])
-            if loaded["format"] != payload["format"]:
-                raise ValueError("Checkpoint format mismatch after reload")
             tmp.replace(self.checkpoint)
         finally:
             tmp.unlink(missing_ok=True)
@@ -210,38 +245,13 @@ def train_from_checkpoint(args: argparse.Namespace) -> None:
     sections = payload["sections"]
     builder = DLPFCCVDatasetBuilder(
         Path(args.data_dir), Path(args.checkpoint), int(payload["patch_size"]),
-        float(payload.get("image_scale", 0.0))
+        float(payload.get("image_scale", 0.0)),
     )
     builder.validate_sections(sections)
     core.download_dataset = lambda _data_dir: None
     core.load_sections = lambda _data_dir, _patch_size, _image_scale: sections
     args.skip_download = True
     core.run(args)
-
-
-def parse_args() -> argparse.Namespace:
-    parser = core.parse_args()
-    return parser
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    sub = parser.add_subparsers(dest="command", required=True)
-    build = sub.add_parser("build")
-    build.add_argument("--data-dir", default="larsp_ci/data")
-    build.add_argument("--checkpoint", default="larsp_ci/checkpoints/dlpfc_cv_v2.pt")
-    build.add_argument("--patch-size", type=int, default=48)
-    build.add_argument("--image-scale", type=float, default=core.DEFAULT_IMAGE_SCALE)
-
-    train = sub.add_parser("train", parents=[core_arg_parser()], add_help=False)
-    train.add_argument("--checkpoint", default="larsp_ci/checkpoints/dlpfc_cv_v2.pt")
-
-    args = parser.parse_args()
-    if args.command == "build":
-        DLPFCCVDatasetBuilder(Path(args.data_dir), Path(args.checkpoint),
-                              args.patch_size, args.image_scale).build()
-    else:
-        train_from_checkpoint(args)
 
 
 def core_arg_parser() -> argparse.ArgumentParser:
@@ -262,6 +272,25 @@ def core_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--skip-download", action="store_true")
     p.add_argument("--cpu", action="store_true")
     return p
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+    build = sub.add_parser("build")
+    build.add_argument("--data-dir", default="larsp_ci/data")
+    build.add_argument("--checkpoint", default="larsp_ci/checkpoints/dlpfc_cv_v2.pt")
+    build.add_argument("--patch-size", type=int, default=48)
+    build.add_argument("--image-scale", type=float, default=core.DEFAULT_IMAGE_SCALE)
+    train = sub.add_parser("train", parents=[core_arg_parser()], add_help=False)
+    train.add_argument("--checkpoint", default="larsp_ci/checkpoints/dlpfc_cv_v2.pt")
+    args = parser.parse_args()
+    if args.command == "build":
+        DLPFCCVDatasetBuilder(
+            Path(args.data_dir), Path(args.checkpoint), args.patch_size, args.image_scale
+        ).build()
+    else:
+        train_from_checkpoint(args)
 
 
 if __name__ == "__main__":
