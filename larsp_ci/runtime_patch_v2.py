@@ -124,8 +124,8 @@ if anchor not in source:
     raise RuntimeError('independent_assignment anchor not found')
 source = source.replace(anchor, anchor + addition)
 
-start = source.index('def partition_clusters(')
-end = source.index('\n\ndef assign_partition(', start)
+start = source.index('def cluster_predict(')
+end = source.index('\n\ndef run_seed(', start)
 source = source[:start] + '''def partition_clusters(
     z_graph: np.ndarray,
     coords: np.ndarray,
@@ -144,17 +144,51 @@ source = source[:start] + '''def partition_clusters(
     n_clusters = len(np.unique(clusters))
     order = fiedler_cluster_order(affinity, clusters, coords)
     return clusters, order, n_clusters, affinity
+
+
+def assign_partition(
+    clusters: np.ndarray,
+    order: np.ndarray,
+    test_z_cov: np.ndarray,
+    prototypes: Sequence[np.ndarray],
+    assignment_mode: str = 'ordered_airm',
+) -> np.ndarray:
+    n_clusters = len(np.unique(clusters))
+    covariances = [shrinkage_covariance(test_z_cov[clusters == c]) for c in range(n_clusters)]
+    if assignment_mode == 'ordered_airm':
+        mapping = ordered_assignment(covariances, prototypes, order, metric='airm')
+    elif assignment_mode == 'ordered_frobenius':
+        mapping = ordered_assignment(covariances, prototypes, order, metric='frobenius')
+    elif assignment_mode == 'independent_airm':
+        mapping = independent_assignment(covariances, prototypes)
+    else:
+        raise ValueError(assignment_mode)
+    return mapping[clusters]
+
+
+def cluster_predict(
+    test_z_graph: np.ndarray,
+    test_z_cov: np.ndarray,
+    coords: np.ndarray,
+    prototypes: Sequence[np.ndarray],
+    seed: int,
+    graph_mode: str = 'spatial',
+    assignment_mode: str = 'ordered_airm',
+    candidates: Sequence[int] = (5, 6, 7),
+) -> Tuple[np.ndarray, int]:
+    clusters, order, n_clusters, _ = partition_clusters(
+        test_z_graph, coords, seed, graph_mode, candidates
+    )
+    return assign_partition(clusters, order, test_z_cov, prototypes, assignment_mode), n_clusters
 ''' + source[end:]
-source = source.replace(
-    'clusters, order, n_clusters = partition_clusters(test_z_graph, coords, seed, graph_mode, candidates)',
-    'clusters, order, n_clusters, _ = partition_clusters(test_z_graph, coords, seed, graph_mode, candidates)',
-)
 
 block_start = source.index("            predictions: Dict[str, np.ndarray] = {")
 block_end = source.index("            for method, prediction in predictions.items():", block_start)
 replacement = '''            pca_probabilities = classifier_probabilities(pca_logreg, pca_test)
             supcon_probabilities = classifier_probabilities(supcon_logreg, z_byol)
             byol_probabilities = classifier_probabilities(byol_logreg, z_byol_only)
+            fusion_probabilities = 0.5 * pca_probabilities + 0.5 * supcon_probabilities
+            fusion_probabilities /= fusion_probabilities.sum(axis=1, keepdims=True)
 
             predictions: Dict[str, np.ndarray] = {
                 'PCA-LogReg': np.argmax(pca_probabilities, axis=1),
@@ -163,6 +197,7 @@ replacement = '''            pca_probabilities = classifier_probabilities(pca_lo
                 'Euclidean-Prototype': nearest_centroid_predict(
                     z_train[valid_train], y_train[valid_train], z_byol
                 ),
+                'Fusion-LogReg': np.argmax(fusion_probabilities, axis=1),
             }
 
             spatial_clusters, spatial_order, full_k, spatial_affinity = partition_clusters(
@@ -171,20 +206,28 @@ replacement = '''            pca_probabilities = classifier_probabilities(pca_lo
             graph_probabilities = graph_smooth_probabilities(
                 spatial_affinity, supcon_probabilities
             )
+            pca_graph_probabilities = graph_smooth_probabilities(
+                spatial_affinity, pca_probabilities
+            )
+            fusion_graph_probabilities = graph_smooth_probabilities(
+                spatial_affinity, fusion_probabilities
+            )
             predictions['SupCon-GraphSmooth'] = np.argmax(graph_probabilities, axis=1)
+            predictions['PCA-GraphSmooth'] = np.argmax(pca_graph_probabilities, axis=1)
+            predictions['Fusion-GraphSmooth'] = np.argmax(fusion_graph_probabilities, axis=1)
             full_pred, _ = calibrated_partition_prediction(
                 spatial_clusters, spatial_order, spatial_affinity, z_cov,
-                covariance_prototypes, supcon_probabilities,
+                covariance_prototypes, fusion_probabilities,
                 ordered=True, airm_weight=0.15, prior_strength=0.55,
             )
             semantic_only_pred, _ = calibrated_partition_prediction(
                 spatial_clusters, spatial_order, spatial_affinity, z_cov,
-                covariance_prototypes, supcon_probabilities,
+                covariance_prototypes, fusion_probabilities,
                 ordered=True, airm_weight=0.0, prior_strength=0.55,
             )
             no_order_pred, _ = calibrated_partition_prediction(
                 spatial_clusters, spatial_order, spatial_affinity, z_cov,
-                covariance_prototypes, supcon_probabilities,
+                covariance_prototypes, fusion_probabilities,
                 ordered=False, airm_weight=0.15, prior_strength=0.55,
             )
 
@@ -193,7 +236,7 @@ replacement = '''            pca_probabilities = classifier_probabilities(pca_lo
             )
             no_spatial_pred, _ = calibrated_partition_prediction(
                 embedding_clusters, embedding_order, embedding_affinity, z_cov,
-                covariance_prototypes, supcon_probabilities,
+                covariance_prototypes, fusion_probabilities,
                 ordered=True, airm_weight=0.15, prior_strength=0.55,
             )
 
