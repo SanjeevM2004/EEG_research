@@ -13,13 +13,19 @@ permissions:
 
 jobs:
   validate:
-    name: Real DLPFC soft-prior diagnostic seed ${{ matrix.seed }}
+    name: Real DLPFC final seed ${{ matrix.seed }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
-        seed: [11]
+        seed: [11, 42, 73]
+
+    env:
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+      OPENBLAS_NUM_THREADS: '4'
 
     steps:
       - name: Check out repository
@@ -41,7 +47,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install numpy pandas scipy scikit-learn matplotlib anndata requests h5py
-      - name: Restore soft-prior LaRSP experiment
+      - name: Restore frozen LaRSP experiment
         shell: bash
         run: |
           mkdir -p larsp_ci/results/seed_${{ matrix.seed }}
@@ -49,9 +55,9 @@ jobs:
           git show bd4bb986cebeeb532e2f4eb64b2400b6fdefc4ad:larsp_ci/experiment.py.gz.b64 \
             | base64 --decode | gzip --decompress > larsp_ci/experiment.py
           python -u larsp_ci/runtime_patch_v2.py 2>&1 | tee larsp_ci/results/seed_${{ matrix.seed }}/patch.log
-          sed -i 's/cluster_prior = 0.55 \* cluster_probabilities + 0.45 \* assigned/cluster_prior = 0.95 * cluster_probabilities + 0.05 * assigned/' larsp_ci/experiment.py
           python -m py_compile larsp_ci/experiment.py 2>&1 | tee -a larsp_ci/results/seed_${{ matrix.seed }}/patch.log
-      - name: Run soft-prior diagnostic
+          sha256sum larsp_ci/experiment.py larsp_ci/runtime_patch_v2.py | tee larsp_ci/results/seed_${{ matrix.seed }}/source_sha256.txt
+      - name: Run strict leave-one-donor-out experiment
         shell: bash
         run: |
           set -o pipefail
@@ -59,20 +65,25 @@ jobs:
             --seed ${{ matrix.seed }} \
             --output-dir larsp_ci/results/seed_${{ matrix.seed }} \
             --data-dir larsp_ci/data \
-            --n-hvg 1000 \
-            --pca-dim 48 \
-            --embedding-dim 48 \
-            --cov-dim 20 \
+            --n-hvg 1500 \
+            --pca-dim 64 \
+            --embedding-dim 64 \
+            --cov-dim 24 \
             --batch-size 512 \
-            --byol-epochs 2 \
-            --finetune-epochs 2 \
+            --byol-epochs 30 \
+            --finetune-epochs 20 \
             --cpu 2>&1 | tee larsp_ci/results/seed_${{ matrix.seed }}/run.log
-      - name: Upload diagnostic results and logs
+      - name: Record environment
+        if: always()
+        run: |
+          python -m pip freeze > larsp_ci/results/seed_${{ matrix.seed }}/requirements_frozen.txt
+          uname -a > larsp_ci/results/seed_${{ matrix.seed }}/runner_system.txt
+      - name: Upload measured results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: larsp-dlpfc-soft-prior-diagnostic-seed-${{ matrix.seed }}
+          name: larsp-dlpfc-final-seed-${{ matrix.seed }}
           path: larsp_ci/results/seed_${{ matrix.seed }}
           if-no-files-found: warn
           compression-level: 6
-          retention-days: 14
+          retention-days: 30
