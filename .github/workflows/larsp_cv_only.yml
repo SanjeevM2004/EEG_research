@@ -7,6 +7,7 @@ on:
       - 'larsp_ci/cv_only_runner.py'
       - 'larsp_ci/dataset_checkpoint_runner.py'
       - 'larsp_ci/supcon_only_runner.py'
+      - 'larsp_ci/frozen_cv_baselines.py'
       - '.github/workflows/larsp_cv_only.yml'
   workflow_dispatch:
 
@@ -26,13 +27,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-
       - name: Restore verified raw-source cache
         uses: actions/cache/restore@v4
         with:
@@ -41,27 +40,21 @@ jobs:
           restore-keys: |
             larsp-cv-only-dlpfc-v1-${{ runner.os }}
             larsp-dlpfc-zenodo-v1-${{ runner.os }}
-
       - name: Install dataset dependencies
         run: |
           python -m pip install --upgrade pip
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install numpy pandas scipy scikit-learn scikit-image matplotlib anndata requests h5py pillow
-
       - name: Audit image-only source
         shell: bash
         run: |
           set -o pipefail
-          python -m py_compile larsp_ci/cv_only_runner.py larsp_ci/dataset_checkpoint_runner.py larsp_ci/supcon_only_runner.py
+          python -m py_compile larsp_ci/cv_only_runner.py larsp_ci/dataset_checkpoint_runner.py larsp_ci/supcon_only_runner.py larsp_ci/frozen_cv_baselines.py
           python - <<'PY'
           import ast
           from pathlib import Path
           violations = []
-          for name in [
-              'larsp_ci/cv_only_runner.py',
-              'larsp_ci/dataset_checkpoint_runner.py',
-              'larsp_ci/supcon_only_runner.py',
-          ]:
+          for name in ['larsp_ci/cv_only_runner.py','larsp_ci/dataset_checkpoint_runner.py','larsp_ci/supcon_only_runner.py','larsp_ci/frozen_cv_baselines.py']:
               tree = ast.parse(Path(name).read_text())
               for node in ast.walk(tree):
                   if isinstance(node, ast.Attribute) and node.attr in {'X', 'layers', 'var', 'var_names'}:
@@ -70,7 +63,6 @@ jobs:
               raise SystemExit(f'Forbidden expression-path AST nodes: {violations}')
           print('AST audit passed: no expression matrix or gene-level fields are accessed.')
           PY
-
       - name: Build and reload validated dataset checkpoint
         shell: bash
         run: |
@@ -82,7 +74,6 @@ jobs:
             --patch-size 48 2>&1 | tee dataset_build.log
           test -s larsp_ci/checkpoints/dlpfc_cv_v2.pt
           test -s larsp_ci/checkpoints/dlpfc_cv_v2.manifest.json
-
       - name: Upload validated checkpoint and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -115,25 +106,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-
       - name: Download validated dataset checkpoint
         uses: actions/download-artifact@v4
         with:
           name: dlpfc-cv-dataset-v2
           path: larsp_ci/checkpoints_download
-
       - name: Install image-only scientific stack
         run: |
           python -m pip install --upgrade pip
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install numpy pandas scipy scikit-learn scikit-image matplotlib anndata requests h5py pillow
-
       - name: Verify checkpoint and SupCon-only source
         shell: bash
         run: |
@@ -156,7 +143,6 @@ jobs:
           print('SupCon-only source audit passed: no CE classifier in adaptation stage.')
           PY
           sha256sum larsp_ci/cv_only_runner.py larsp_ci/dataset_checkpoint_runner.py larsp_ci/supcon_only_runner.py | tee supcon_only_source_sha256.txt
-
       - name: Run strict SupCon-only leave-one-donor-out experiment
         shell: bash
         run: |
@@ -178,20 +164,74 @@ jobs:
             --cpu 2>&1 | tee larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/run.log
           cp supcon_only_source_sha256.txt larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/
           cp larsp_ci/checkpoints_download/larsp_ci/checkpoints/dlpfc_cv_v2.manifest.json larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/
-
       - name: Record environment
         if: always()
         run: |
           mkdir -p larsp_ci/results_supcon_only/seed_${{ matrix.seed }}
           python -m pip freeze > larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/requirements_frozen.txt
           uname -a > larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/runner_system.txt
-
       - name: Upload measured SupCon-only results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: larsp-cv-supcon-only-seed-${{ matrix.seed }}
           path: larsp_ci/results_supcon_only/seed_${{ matrix.seed }}
+          if-no-files-found: warn
+          compression-level: 6
+          retention-days: 30
+
+  frozen-baselines:
+    name: Frozen DINOv2 and dense segmentation LODO
+    needs: build-dataset
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+      OPENBLAS_NUM_THREADS: '4'
+      NUMEXPR_NUM_THREADS: '4'
+      TORCH_HOME: ${{ github.workspace }}/larsp_ci/torch_cache
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Download validated dataset checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: dlpfc-cv-dataset-v2
+          path: larsp_ci/checkpoints_download
+      - name: Install image-only baseline stack
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy pandas scipy scikit-learn matplotlib pillow
+      - name: Run frozen image baselines
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p larsp_ci/results_frozen_baselines
+          python -u larsp_ci/frozen_cv_baselines.py \
+            --checkpoint larsp_ci/checkpoints_download/larsp_ci/checkpoints/dlpfc_cv_v2.pt \
+            --output-dir larsp_ci/results_frozen_baselines \
+            --batch-size 64 \
+            --seeds 11 42 73 \
+            --cpu 2>&1 | tee larsp_ci/results_frozen_baselines/run.log
+      - name: Record environment
+        if: always()
+        run: |
+          mkdir -p larsp_ci/results_frozen_baselines
+          python -m pip freeze > larsp_ci/results_frozen_baselines/requirements_frozen.txt
+          uname -a > larsp_ci/results_frozen_baselines/runner_system.txt
+      - name: Upload measured frozen baseline results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: larsp-cv-frozen-image-baselines
+          path: larsp_ci/results_frozen_baselines
           if-no-files-found: warn
           compression-level: 6
           retention-days: 30
