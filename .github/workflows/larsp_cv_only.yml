@@ -1,0 +1,105 @@
+name: LaRSP CV-only DLPFC validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'larsp_ci/cv_only_runner.py'
+      - '.github/workflows/larsp_cv_only.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Image-only LODO seed ${{ matrix.seed }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        seed: [11, 42, 73]
+
+    env:
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+      OPENBLAS_NUM_THREADS: '4'
+      NUMEXPR_NUM_THREADS: '4'
+      TORCH_HOME: ${{ github.workspace }}/larsp_ci/torch_cache
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Restore DLPFC coordinate containers and image cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            larsp_ci/data
+            larsp_ci/torch_cache
+          key: larsp-cv-only-dlpfc-v1-${{ runner.os }}
+          restore-keys: |
+            larsp-dlpfc-zenodo-v1-${{ runner.os }}
+
+      - name: Install image-only scientific stack
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy pandas scipy scikit-learn scikit-image matplotlib anndata requests h5py pillow
+
+      - name: Audit source for expression access
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m py_compile larsp_ci/cv_only_runner.py
+          if grep -nE 'adata\.X|\.layers\[|align_and_preprocess|n_hvg|selected_genes|gene_expression' larsp_ci/cv_only_runner.py | grep -vE 'gene_expression_used|all expression values|expression matrix|never read or used'; then
+            echo 'Forbidden expression-path token detected in CV-only runner.'
+            exit 1
+          fi
+          sha256sum larsp_ci/cv_only_runner.py | tee cv_only_source_sha256.txt
+
+      - name: Run strict image-only leave-one-donor-out experiment
+        shell: bash
+        run: |
+          mkdir -p larsp_ci/results_cv/seed_${{ matrix.seed }}
+          set -o pipefail
+          python -u larsp_ci/cv_only_runner.py \
+            --seed ${{ matrix.seed }} \
+            --output-dir larsp_ci/results_cv/seed_${{ matrix.seed }} \
+            --data-dir larsp_ci/data \
+            --patch-size 48 \
+            --embedding-dim 64 \
+            --cov-dim 24 \
+            --batch-size 256 \
+            --byol-epochs 12 \
+            --finetune-epochs 8 \
+            --majority-k 8 \
+            --majority-steps 2 \
+            --cpu 2>&1 | tee larsp_ci/results_cv/seed_${{ matrix.seed }}/run.log
+          cp cv_only_source_sha256.txt larsp_ci/results_cv/seed_${{ matrix.seed }}/
+
+      - name: Record environment
+        if: always()
+        run: |
+          python -m pip freeze > larsp_ci/results_cv/seed_${{ matrix.seed }}/requirements_frozen.txt
+          uname -a > larsp_ci/results_cv/seed_${{ matrix.seed }}/runner_system.txt
+
+      - name: Upload measured CV-only results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: larsp-cv-only-seed-${{ matrix.seed }}
+          path: larsp_ci/results_cv/seed_${{ matrix.seed }}
+          if-no-files-found: warn
+          compression-level: 6
+          retention-days: 30
