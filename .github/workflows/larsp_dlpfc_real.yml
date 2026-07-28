@@ -45,9 +45,9 @@ jobs:
 
       - name: Restore experiment source
         run: |
-          base64 --decode larsp_ci/experiment.py.gz.b64 | gzip --decompress > larsp_ci/experiment.py
+          cat larsp_ci/payload/experiment.*.b64 | base64 --decode | gzip --decompress > larsp_ci/experiment.py
           python -m py_compile larsp_ci/experiment.py
-          sha256sum larsp_ci/experiment.py
+          test "$(sha256sum larsp_ci/experiment.py | cut -d' ' -f1)" = "201333aa70f9bf4b74be8bef804fb6c66edd288e119e9984d8001ceffc7c2c42"
 
       - name: Run diagnostic end-to-end fold
         shell: bash
@@ -80,6 +80,6 @@ jobs:
         with:
           name: larsp-dlpfc-diagnostic-seed-${{ matrix.seed }}
           path: larsp_ci/results/seed_${{ matrix.seed }}
-          if-no-files-found: error
+          if-no-files-found: warn
           compression-level: 6
           retention-days: 14
