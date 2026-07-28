@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   validate:
-    name: Real DLPFC diagnostic seed ${{ matrix.seed }}
+    name: Real DLPFC calibrated diagnostic seed ${{ matrix.seed }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
@@ -41,22 +41,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install numpy pandas scipy scikit-learn matplotlib anndata requests h5py
-      - name: Restore verified experiment and use H5AD Region labels
+      - name: Restore and calibrate LaRSP experiment
         run: |
           git show bd4bb986cebeeb532e2f4eb64b2400b6fdefc4ad:larsp_ci/experiment.py.gz.b64 \
             | base64 --decode | gzip --decompress > larsp_ci/experiment.py
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('larsp_ci/experiment.py')
-          s = p.read_text()
-          old = "'spatialLIBD', 'Ground Truth', 'ground_truth', 'label', 'layer',"
-          new = "'spatialLIBD', 'Region', 'region', 'Ground Truth', 'ground_truth', 'label', 'layer',"
-          if old not in s:
-              raise RuntimeError('label candidate block not found')
-          p.write_text(s.replace(old, new))
-          PY
+          python larsp_ci/runtime_patch_v2.py
           python -m py_compile larsp_ci/experiment.py
-      - name: Run diagnostic end-to-end fold
+      - name: Run calibrated diagnostic
         shell: bash
         run: |
           mkdir -p larsp_ci/results/seed_${{ matrix.seed }}
@@ -77,7 +68,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: larsp-dlpfc-diagnostic-seed-${{ matrix.seed }}
+          name: larsp-dlpfc-calibrated-diagnostic-seed-${{ matrix.seed }}
           path: larsp_ci/results/seed_${{ matrix.seed }}
           if-no-files-found: warn
           compression-level: 6
