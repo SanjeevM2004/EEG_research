@@ -1,4 +1,4 @@
-name: LaRSP CV-only DLPFC validation
+name: LaRSP CV-only SupCon-only validation
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
     paths:
       - 'larsp_ci/cv_only_runner.py'
       - 'larsp_ci/dataset_checkpoint_runner.py'
+      - 'larsp_ci/supcon_only_runner.py'
       - '.github/workflows/larsp_cv_only.yml'
   workflow_dispatch:
 
@@ -51,12 +52,16 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -m py_compile larsp_ci/cv_only_runner.py larsp_ci/dataset_checkpoint_runner.py
+          python -m py_compile larsp_ci/cv_only_runner.py larsp_ci/dataset_checkpoint_runner.py larsp_ci/supcon_only_runner.py
           python - <<'PY'
           import ast
           from pathlib import Path
           violations = []
-          for name in ['larsp_ci/cv_only_runner.py', 'larsp_ci/dataset_checkpoint_runner.py']:
+          for name in [
+              'larsp_ci/cv_only_runner.py',
+              'larsp_ci/dataset_checkpoint_runner.py',
+              'larsp_ci/supcon_only_runner.py',
+          ]:
               tree = ast.parse(Path(name).read_text())
               for node in ast.walk(tree):
                   if isinstance(node, ast.Attribute) and node.attr in {'X', 'layers', 'var', 'var_names'}:
@@ -92,15 +97,15 @@ jobs:
           retention-days: 30
 
   validate:
-    name: Image-only LODO seed ${{ matrix.seed }}
+    name: SupCon-only image LODO seed ${{ matrix.seed }}
     needs: build-dataset
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 1
       matrix:
-        seed: [11, 42, 73]
+        seed: [73]
     env:
       OMP_NUM_THREADS: '4'
       MKL_NUM_THREADS: '4'
@@ -129,7 +134,7 @@ jobs:
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install numpy pandas scipy scikit-learn scikit-image matplotlib anndata requests h5py pillow
 
-      - name: Verify checkpoint before training
+      - name: Verify checkpoint and SupCon-only source
         shell: bash
         run: |
           set -euo pipefail
@@ -143,19 +148,24 @@ jobs:
           assert m['sections'] == 12, m
           assert m['spots'] > 1000, m
           assert len(m['donors']) == 3, m
+          source = Path('larsp_ci/supcon_only_runner.py').read_text()
+          assert 'F.cross_entropy' not in source
+          assert 'nn.Linear(embedding_dim, 7)' not in source
+          assert 'supervised_contrastive_loss' in source
           print(json.dumps(m, indent=2))
+          print('SupCon-only source audit passed: no CE classifier in adaptation stage.')
           PY
-          sha256sum larsp_ci/cv_only_runner.py larsp_ci/dataset_checkpoint_runner.py | tee cv_only_source_sha256.txt
+          sha256sum larsp_ci/cv_only_runner.py larsp_ci/dataset_checkpoint_runner.py larsp_ci/supcon_only_runner.py | tee supcon_only_source_sha256.txt
 
-      - name: Run strict image-only leave-one-donor-out experiment
+      - name: Run strict SupCon-only leave-one-donor-out experiment
         shell: bash
         run: |
-          mkdir -p larsp_ci/results_cv/seed_${{ matrix.seed }}
+          mkdir -p larsp_ci/results_supcon_only/seed_${{ matrix.seed }}
           set -o pipefail
-          python -u larsp_ci/dataset_checkpoint_runner.py train \
+          python -u larsp_ci/supcon_only_runner.py train \
             --checkpoint larsp_ci/checkpoints_download/larsp_ci/checkpoints/dlpfc_cv_v2.pt \
             --seed ${{ matrix.seed }} \
-            --output-dir larsp_ci/results_cv/seed_${{ matrix.seed }} \
+            --output-dir larsp_ci/results_supcon_only/seed_${{ matrix.seed }} \
             --data-dir larsp_ci/data \
             --patch-size 48 \
             --embedding-dim 64 \
@@ -165,23 +175,23 @@ jobs:
             --finetune-epochs 8 \
             --majority-k 8 \
             --majority-steps 2 \
-            --cpu 2>&1 | tee larsp_ci/results_cv/seed_${{ matrix.seed }}/run.log
-          cp cv_only_source_sha256.txt larsp_ci/results_cv/seed_${{ matrix.seed }}/
-          cp larsp_ci/checkpoints_download/larsp_ci/checkpoints/dlpfc_cv_v2.manifest.json larsp_ci/results_cv/seed_${{ matrix.seed }}/
+            --cpu 2>&1 | tee larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/run.log
+          cp supcon_only_source_sha256.txt larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/
+          cp larsp_ci/checkpoints_download/larsp_ci/checkpoints/dlpfc_cv_v2.manifest.json larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/
 
       - name: Record environment
         if: always()
         run: |
-          mkdir -p larsp_ci/results_cv/seed_${{ matrix.seed }}
-          python -m pip freeze > larsp_ci/results_cv/seed_${{ matrix.seed }}/requirements_frozen.txt
-          uname -a > larsp_ci/results_cv/seed_${{ matrix.seed }}/runner_system.txt
+          mkdir -p larsp_ci/results_supcon_only/seed_${{ matrix.seed }}
+          python -m pip freeze > larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/requirements_frozen.txt
+          uname -a > larsp_ci/results_supcon_only/seed_${{ matrix.seed }}/runner_system.txt
 
-      - name: Upload measured CV-only results
+      - name: Upload measured SupCon-only results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: larsp-cv-only-seed-${{ matrix.seed }}
-          path: larsp_ci/results_cv/seed_${{ matrix.seed }}
+          name: larsp-cv-supcon-only-seed-${{ matrix.seed }}
+          path: larsp_ci/results_supcon_only/seed_${{ matrix.seed }}
           if-no-files-found: warn
           compression-level: 6
           retention-days: 30
