@@ -51,6 +51,27 @@ jobs:
           restore-keys: |
             larsp-dlpfc-zenodo-v1-${{ runner.os }}
 
+      - name: Remove corrupted cached metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          data_dir = Path('larsp_ci/data')
+          removed = []
+          for path in data_dir.glob('*_truth.txt'):
+              raw = path.read_bytes()
+              valid = (
+                  len(raw) >= 128
+                  and b'\x00' not in raw
+                  and b'\t' in raw[:4096]
+                  and raw.count(b'\n') > 100
+              )
+              if not valid:
+                  path.unlink(missing_ok=True)
+                  removed.append(path.name)
+          print(f'Removed corrupted cached truth files: {removed}')
+          PY
+
       - name: Install image-only scientific stack
         run: |
           python -m pip install --upgrade pip
