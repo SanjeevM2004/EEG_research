@@ -42,15 +42,17 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install numpy pandas scipy scikit-learn matplotlib anndata requests h5py
       - name: Restore and calibrate LaRSP experiment
-        run: |
-          git show bd4bb986cebeeb532e2f4eb64b2400b6fdefc4ad:larsp_ci/experiment.py.gz.b64 \
-            | base64 --decode | gzip --decompress > larsp_ci/experiment.py
-          python larsp_ci/runtime_patch_v2.py
-          python -m py_compile larsp_ci/experiment.py
-      - name: Run calibrated diagnostic
         shell: bash
         run: |
           mkdir -p larsp_ci/results/seed_${{ matrix.seed }}
+          set -o pipefail
+          git show bd4bb986cebeeb532e2f4eb64b2400b6fdefc4ad:larsp_ci/experiment.py.gz.b64 \
+            | base64 --decode | gzip --decompress > larsp_ci/experiment.py
+          python -u larsp_ci/runtime_patch_v2.py 2>&1 | tee larsp_ci/results/seed_${{ matrix.seed }}/patch.log
+          python -m py_compile larsp_ci/experiment.py 2>&1 | tee -a larsp_ci/results/seed_${{ matrix.seed }}/patch.log
+      - name: Run calibrated diagnostic
+        shell: bash
+        run: |
           set -o pipefail
           python -u larsp_ci/experiment.py \
             --seed ${{ matrix.seed }} \
