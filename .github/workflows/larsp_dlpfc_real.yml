@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   validate:
-    name: Real DLPFC calibrated diagnostic seed ${{ matrix.seed }}
+    name: Real DLPFC soft-prior diagnostic seed ${{ matrix.seed }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
@@ -41,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install numpy pandas scipy scikit-learn matplotlib anndata requests h5py
-      - name: Restore and calibrate LaRSP experiment
+      - name: Restore soft-prior LaRSP experiment
         shell: bash
         run: |
           mkdir -p larsp_ci/results/seed_${{ matrix.seed }}
@@ -49,8 +49,9 @@ jobs:
           git show bd4bb986cebeeb532e2f4eb64b2400b6fdefc4ad:larsp_ci/experiment.py.gz.b64 \
             | base64 --decode | gzip --decompress > larsp_ci/experiment.py
           python -u larsp_ci/runtime_patch_v2.py 2>&1 | tee larsp_ci/results/seed_${{ matrix.seed }}/patch.log
+          sed -i 's/cluster_prior = 0.55 \* cluster_probabilities + 0.45 \* assigned/cluster_prior = 0.95 * cluster_probabilities + 0.05 * assigned/' larsp_ci/experiment.py
           python -m py_compile larsp_ci/experiment.py 2>&1 | tee -a larsp_ci/results/seed_${{ matrix.seed }}/patch.log
-      - name: Run calibrated diagnostic
+      - name: Run soft-prior diagnostic
         shell: bash
         run: |
           set -o pipefail
@@ -70,7 +71,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: larsp-dlpfc-calibrated-diagnostic-seed-${{ matrix.seed }}
+          name: larsp-dlpfc-soft-prior-diagnostic-seed-${{ matrix.seed }}
           path: larsp_ci/results/seed_${{ matrix.seed }}
           if-no-files-found: warn
           compression-level: 6
