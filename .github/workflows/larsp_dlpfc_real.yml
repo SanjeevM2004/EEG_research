@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   validate:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref != 'larsp-cv-only'
     name: Donor-aligned RA-MDM seed ${{ matrix.seed }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
