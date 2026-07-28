@@ -12,13 +12,22 @@ permissions:
   contents: read
 
 jobs:
-  inspect-schema:
-    name: Inspect cached DLPFC annotations
+  validate:
+    name: Real DLPFC diagnostic seed ${{ matrix.seed }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [11]
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
@@ -27,44 +36,49 @@ jobs:
         with:
           path: larsp_ci/data
           key: larsp-dlpfc-zenodo-v1-${{ runner.os }}
-      - name: Install readers
-        run: pip install pandas anndata h5py scipy
-      - name: Inspect annotation schemas
+      - name: Install scientific stack
         run: |
-          mkdir -p larsp_ci/schema
-          cp larsp_ci/data/*_truth.txt larsp_ci/schema/
-          python - <<'PY' > larsp_ci/schema/schema_report.txt
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy pandas scipy scikit-learn matplotlib anndata requests h5py
+      - name: Restore verified experiment and use H5AD Region labels
+        run: |
+          git show bd4bb986cebeeb532e2f4eb64b2400b6fdefc4ad:larsp_ci/experiment.py.gz.b64 \
+            | base64 --decode | gzip --decompress > larsp_ci/experiment.py
+          python - <<'PY'
           from pathlib import Path
-          import pandas as pd
-          import anndata as ad
-          for path in sorted(Path('larsp_ci/data').glob('*_truth.txt')):
-              sid = path.name.split('_')[0]
-              print('\n' + '='*20, sid, '='*20)
-              raw = path.read_text(encoding='utf-8-sig').splitlines()
-              print('line_count', len(raw), 'first_lines', repr(raw[:5]))
-              for name, kwargs in [
-                  ('tab_no_header', dict(sep='\\t', header=None)),
-                  ('comma_no_header', dict(sep=',', header=None)),
-                  ('auto_no_header', dict(sep=None, engine='python', header=None)),
-                  ('tab_header', dict(sep='\\t')),
-              ]:
-                  try:
-                      frame = pd.read_csv(path, **kwargs)
-                      print(name, 'shape', frame.shape, 'columns', list(map(str, frame.columns[:10])))
-                      print(frame.head(3).to_string(index=False))
-                  except Exception as exc:
-                      print(name, 'ERROR', repr(exc))
-              h5 = Path('larsp_ci/data') / f'{sid}_filtered_feature_bc_matrix.h5ad'
-              a = ad.read_h5ad(h5, backed='r')
-              print('h5ad_shape', a.shape)
-              print('obs_columns', list(map(str, a.obs.columns)))
-              print(a.obs.head(3).to_string())
-              a.file.close()
+          p = Path('larsp_ci/experiment.py')
+          s = p.read_text()
+          old = "'spatialLIBD', 'Ground Truth', 'ground_truth', 'label', 'layer',"
+          new = "'spatialLIBD', 'Region', 'region', 'Ground Truth', 'ground_truth', 'label', 'layer',"
+          if old not in s:
+              raise RuntimeError('label candidate block not found')
+          p.write_text(s.replace(old, new))
           PY
-      - name: Upload schemas
+          python -m py_compile larsp_ci/experiment.py
+      - name: Run diagnostic end-to-end fold
+        shell: bash
+        run: |
+          mkdir -p larsp_ci/results/seed_${{ matrix.seed }}
+          set -o pipefail
+          python -u larsp_ci/experiment.py \
+            --seed ${{ matrix.seed }} \
+            --output-dir larsp_ci/results/seed_${{ matrix.seed }} \
+            --data-dir larsp_ci/data \
+            --n-hvg 1000 \
+            --pca-dim 48 \
+            --embedding-dim 48 \
+            --cov-dim 20 \
+            --batch-size 512 \
+            --byol-epochs 2 \
+            --finetune-epochs 2 \
+            --cpu 2>&1 | tee larsp_ci/results/seed_${{ matrix.seed }}/run.log
+      - name: Upload diagnostic results and logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: larsp-dlpfc-schema
-          path: larsp_ci/schema
-          if-no-files-found: error
+          name: larsp-dlpfc-diagnostic-seed-${{ matrix.seed }}
+          path: larsp_ci/results/seed_${{ matrix.seed }}
+          if-no-files-found: warn
+          compression-level: 6
           retention-days: 14
