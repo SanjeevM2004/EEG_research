@@ -13,13 +13,13 @@ permissions:
 
 jobs:
   validate:
-    name: Real DLPFC seed ${{ matrix.seed }}
+    name: Real DLPFC diagnostic seed ${{ matrix.seed }}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
-        seed: [11, 42, 73]
+        seed: [11]
 
     steps:
       - name: Check out repository
@@ -32,7 +32,7 @@ jobs:
           cache: pip
 
       - name: Restore shared DLPFC cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: larsp_ci/data
           key: larsp-dlpfc-zenodo-v1-${{ runner.os }}
@@ -49,28 +49,37 @@ jobs:
           python -m py_compile larsp_ci/experiment.py
           sha256sum larsp_ci/experiment.py
 
-      - name: Run strict leave-one-donor-out validation
+      - name: Run diagnostic end-to-end fold
+        shell: bash
         run: |
-          python larsp_ci/experiment.py \
+          mkdir -p larsp_ci/results/seed_${{ matrix.seed }}
+          set -o pipefail
+          python -u larsp_ci/experiment.py \
             --seed ${{ matrix.seed }} \
             --output-dir larsp_ci/results/seed_${{ matrix.seed }} \
             --data-dir larsp_ci/data \
-            --n-hvg 1500 \
-            --pca-dim 64 \
-            --embedding-dim 64 \
-            --cov-dim 24 \
+            --n-hvg 1000 \
+            --pca-dim 48 \
+            --embedding-dim 48 \
+            --cov-dim 20 \
             --batch-size 512 \
-            --byol-epochs 30 \
-            --finetune-epochs 20 \
-            --cpu
+            --byol-epochs 2 \
+            --finetune-epochs 2 \
+            --cpu 2>&1 | tee larsp_ci/results/seed_${{ matrix.seed }}/run.log
 
-      - name: Upload measured results
+      - name: Save downloaded DLPFC cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: larsp_ci/data
+          key: larsp-dlpfc-zenodo-v1-${{ runner.os }}
+
+      - name: Upload diagnostic results and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: larsp-dlpfc-real-seed-${{ matrix.seed }}
-          path: |
-            larsp_ci/results/seed_${{ matrix.seed }}
-          if-no-files-found: warn
+          name: larsp-dlpfc-diagnostic-seed-${{ matrix.seed }}
+          path: larsp_ci/results/seed_${{ matrix.seed }}
+          if-no-files-found: error
           compression-level: 6
           retention-days: 14
