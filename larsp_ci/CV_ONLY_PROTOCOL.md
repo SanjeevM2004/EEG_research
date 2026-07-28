@@ -42,4 +42,13 @@ The H5AD container is opened in backed mode only to read spot barcodes and `obsm
 - Spatial graph-smoothed variants of each classifier.
 - RA-MDM and ordered RA-MDM ablations.
 
+## Required external CV-only comparisons
+
+- **STAIG image mode** is the primary domain-specific visual comparator. Its image-feature branch performs image-only region discovery, but returns anonymous clusters; it must be compared with LaRSP-CV's spectral-discovery stage by ARI/NMI, not with named-layer accuracy unless cluster names are learned only from training donors.
+- **stImage image-only** is a contextual DLPFC baseline for image-only clustering. Published values are not treated as a matched semantic-annotation leaderboard.
+- **DINOv2 linear probe** is the principal generic self-supervised vision baseline to add under the same donor folds.
+- A pathology foundation encoder such as **UNI** is a desirable stronger representation baseline when its weights and compute are available.
+
+The main semantic-accuracy table contains only controlled reruns using H&E pixels and coordinates under the identical leave-one-donor-out folds. Published image-only clustering values are kept in a separate context table.
+
 No previously reported expression-based result is reused as an image-only result.
