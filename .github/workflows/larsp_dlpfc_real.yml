@@ -1,0 +1,92 @@
+name: LaRSP real DLPFC validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'larsp_ci/**'
+      - '.github/workflows/larsp_dlpfc_real.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Real DLPFC final soft-prior seed ${{ matrix.seed }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        seed: [11, 42, 73]
+
+    env:
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+      OPENBLAS_NUM_THREADS: '4'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Restore shared DLPFC cache
+        uses: actions/cache/restore@v4
+        with:
+          path: larsp_ci/data
+          key: larsp-dlpfc-zenodo-v1-${{ runner.os }}
+      - name: Install scientific stack
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy pandas scipy scikit-learn matplotlib anndata requests h5py
+      - name: Restore frozen LaRSP experiment
+        shell: bash
+        run: |
+          mkdir -p larsp_ci/results/seed_${{ matrix.seed }}
+          set -o pipefail
+          git show bd4bb986cebeeb532e2f4eb64b2400b6fdefc4ad:larsp_ci/experiment.py.gz.b64 \
+            | base64 --decode | gzip --decompress > larsp_ci/experiment.py
+          python -u larsp_ci/runtime_patch_v2.py 2>&1 | tee larsp_ci/results/seed_${{ matrix.seed }}/patch.log
+          # Conservative, globally fixed structural refinement: 95% semantic evidence,
+          # 5% ordered cluster assignment. This is identical for every donor and seed.
+          sed -i 's/cluster_prior = 0.55 \* cluster_probabilities + 0.45 \* assigned/cluster_prior = 0.95 * cluster_probabilities + 0.05 * assigned/' larsp_ci/experiment.py
+          python -m py_compile larsp_ci/experiment.py 2>&1 | tee -a larsp_ci/results/seed_${{ matrix.seed }}/patch.log
+          sha256sum larsp_ci/experiment.py larsp_ci/runtime_patch_v2.py | tee larsp_ci/results/seed_${{ matrix.seed }}/source_sha256.txt
+      - name: Run strict leave-one-donor-out experiment
+        shell: bash
+        run: |
+          set -o pipefail
+          python -u larsp_ci/experiment.py \
+            --seed ${{ matrix.seed }} \
+            --output-dir larsp_ci/results/seed_${{ matrix.seed }} \
+            --data-dir larsp_ci/data \
+            --n-hvg 1500 \
+            --pca-dim 64 \
+            --embedding-dim 64 \
+            --cov-dim 24 \
+            --batch-size 512 \
+            --byol-epochs 30 \
+            --finetune-epochs 20 \
+            --cpu 2>&1 | tee larsp_ci/results/seed_${{ matrix.seed }}/run.log
+      - name: Record environment
+        if: always()
+        run: |
+          python -m pip freeze > larsp_ci/results/seed_${{ matrix.seed }}/requirements_frozen.txt
+          uname -a > larsp_ci/results/seed_${{ matrix.seed }}/runner_system.txt
+      - name: Upload measured results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: larsp-dlpfc-final-soft-prior-seed-${{ matrix.seed }}
+          path: larsp_ci/results/seed_${{ matrix.seed }}
+          if-no-files-found: warn
+          compression-level: 6
+          retention-days: 30
