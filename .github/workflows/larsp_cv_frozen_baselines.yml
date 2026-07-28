@@ -117,7 +117,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy pandas scipy scikit-learn matplotlib pillow
+          pip install numpy pandas scipy scikit-learn scikit-image matplotlib anndata requests h5py pillow
 
       - name: Run frozen CV baselines
         shell: bash
