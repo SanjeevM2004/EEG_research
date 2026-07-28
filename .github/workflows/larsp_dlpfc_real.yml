@@ -1,0 +1,76 @@
+name: LaRSP real DLPFC validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'larsp_ci/**'
+      - '.github/workflows/larsp_dlpfc_real.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Real DLPFC seed ${{ matrix.seed }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [11, 42, 73]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Restore shared DLPFC cache
+        uses: actions/cache@v4
+        with:
+          path: larsp_ci/data
+          key: larsp-dlpfc-zenodo-v1-${{ runner.os }}
+
+      - name: Install scientific stack
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy pandas scipy scikit-learn matplotlib anndata requests h5py
+
+      - name: Restore experiment source
+        run: |
+          base64 --decode larsp_ci/experiment.py.gz.b64 | gzip --decompress > larsp_ci/experiment.py
+          python -m py_compile larsp_ci/experiment.py
+          sha256sum larsp_ci/experiment.py
+
+      - name: Run strict leave-one-donor-out validation
+        run: |
+          python larsp_ci/experiment.py \
+            --seed ${{ matrix.seed }} \
+            --output-dir larsp_ci/results/seed_${{ matrix.seed }} \
+            --data-dir larsp_ci/data \
+            --n-hvg 1500 \
+            --pca-dim 64 \
+            --embedding-dim 64 \
+            --cov-dim 24 \
+            --batch-size 512 \
+            --byol-epochs 30 \
+            --finetune-epochs 20 \
+            --cpu
+
+      - name: Upload measured results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: larsp-dlpfc-real-seed-${{ matrix.seed }}
+          path: |
+            larsp_ci/results/seed_${{ matrix.seed }}
+          if-no-files-found: warn
+          compression-level: 6
+          retention-days: 14
