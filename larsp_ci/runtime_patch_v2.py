@@ -102,7 +102,7 @@ def calibrated_partition_prediction(
         cluster_probabilities, 0.04 / max(cluster_probabilities.shape[1] - 1, 1)
     )
     assigned[np.arange(n_clusters), mapping] = 0.96
-    cluster_prior = 0.55 * cluster_probabilities + 0.45 * assigned
+    cluster_prior = 0.95 * cluster_probabilities + 0.05 * assigned
     cluster_prior /= cluster_prior.sum(axis=1, keepdims=True)
     confidence = np.max(smoothed, axis=1)
     adaptive = np.clip(float(prior_strength) * (1.0 - confidence), 0.0, 0.40)[:, None]
