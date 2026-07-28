@@ -103,9 +103,9 @@ jobs:
     timeout-minutes: 350
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 3
       matrix:
-        seed: [73]
+        seed: [11, 42, 73]
     env:
       OMP_NUM_THREADS: '4'
       MKL_NUM_THREADS: '4'
