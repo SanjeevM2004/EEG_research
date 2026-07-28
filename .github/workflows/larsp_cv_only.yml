@@ -62,10 +62,21 @@ jobs:
         run: |
           set -o pipefail
           python -m py_compile larsp_ci/cv_only_runner.py
-          if grep -nE 'adata\.X|\.layers\[|align_and_preprocess|n_hvg|selected_genes|gene_expression' larsp_ci/cv_only_runner.py | grep -vE 'gene_expression_used|all expression values|expression matrix|never read or used'; then
-            echo 'Forbidden expression-path token detected in CV-only runner.'
-            exit 1
-          fi
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          path = Path('larsp_ci/cv_only_runner.py')
+          tree = ast.parse(path.read_text())
+          violations = []
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Attribute) and node.attr in {'X', 'layers', 'var', 'var_names'}:
+                  violations.append((node.lineno, f'attribute .{node.attr}'))
+              if isinstance(node, ast.Name) and node.id in {'align_and_preprocess', 'selected_genes', 'n_hvg'}:
+                  violations.append((node.lineno, f'name {node.id}'))
+          if violations:
+              raise SystemExit(f'Forbidden expression-path AST nodes: {violations}')
+          print('AST audit passed: no expression matrix, layers, genes, or HVG path is accessed.')
+          PY
           sha256sum larsp_ci/cv_only_runner.py | tee cv_only_source_sha256.txt
 
       - name: Run strict image-only leave-one-donor-out experiment
