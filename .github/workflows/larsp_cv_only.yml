@@ -78,7 +78,8 @@ jobs:
           test -s larsp_ci/checkpoints/dlpfc_cv_v2.pt
           test -s larsp_ci/checkpoints/dlpfc_cv_v2.manifest.json
 
-      - name: Upload validated checkpoint
+      - name: Upload validated checkpoint and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dlpfc-cv-dataset-v2
@@ -86,7 +87,7 @@ jobs:
             larsp_ci/checkpoints/dlpfc_cv_v2.pt
             larsp_ci/checkpoints/dlpfc_cv_v2.manifest.json
             dataset_build.log
-          if-no-files-found: error
+          if-no-files-found: warn
           compression-level: 1
           retention-days: 30
 
@@ -100,14 +101,12 @@ jobs:
       max-parallel: 3
       matrix:
         seed: [11, 42, 73]
-
     env:
       OMP_NUM_THREADS: '4'
       MKL_NUM_THREADS: '4'
       OPENBLAS_NUM_THREADS: '4'
       NUMEXPR_NUM_THREADS: '4'
       TORCH_HOME: ${{ github.workspace }}/larsp_ci/torch_cache
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -186,5 +185,3 @@ jobs:
           if-no-files-found: warn
           compression-level: 6
           retention-days: 30
-
-# Triggered after checkpoint-pipeline correction.
